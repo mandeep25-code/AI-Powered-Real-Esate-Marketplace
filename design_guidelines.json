@@ -1,0 +1,61 @@
+{
+  "app_name": "Lumina Estates - AI Real Estate Marketplace",
+  "theme": "dark-luxury-architectural",
+  "typography": {
+    "heading_font": "Outfit, sans-serif",
+    "body_font": "Plus Jakarta Sans, sans-serif",
+    "mono_font": "JetBrains Mono, monospace"
+  },
+  "colors": {
+    "primary": "#0F172A",
+    "secondary": "#334155",
+    "accent": "#D4AF37",
+    "background": "#050B14",
+    "surface": "#0F172A",
+    "card": "#1E293B",
+    "text": "#F8FAFC",
+    "text_muted": "#94A3B8",
+    "border": "#334155"
+  },
+  "grids": {
+    "mode": "Bento Asymmetric Grid",
+    "columns": "grid-cols-1 md:grid-cols-12",
+    "gap": "gap-6 md:gap-8"
+  },
+  "component_path": "/app/frontend/src/components",
+  "image_urls": [
+    {
+      "category": "hero_penthouse",
+      "url": "https://images.unsplash.com/photo-1776362355123-ca966d36e29c?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "description": "Luxurious modern penthouse living room with panoramic view"
+    },
+    {
+      "category": "villa_pool",
+      "url": "https://images.unsplash.com/photo-1613490493576-7fde63acd811?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "description": "Modern luxury villa exterior with infinity pool"
+    },
+    {
+      "category": "city_skyline",
+      "url": "https://images.pexels.com/photos/8572163/pexels-photo-8572163.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Man in a modern luxury apartment with urban skyline view"
+    },
+    {
+      "category": "dining_interior",
+      "url": "https://images.pexels.com/photos/6970051/pexels-photo-6970051.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Stylish dining room with large windows overlooking cityscape"
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Ensure strict MERN stack compliance with React.js frontend, Node.js + Express.js backend, MongoDB database.",
+    "Integrate Google Gemini AI for natural-language property search, AI price/comparable analysis, risk detection, and investment insights.",
+    "Implement JWT authentication supporting Buyer and Seller roles with seeded demo accounts and registration.",
+    "Include wishlist, comparison drawer, property CRUD, search filters, and real-time messaging between buyers and sellers.",
+    "Apply all E1 design principles: generous spacing, luxury dark architecture aesthetic with gold accents, Bento asymmetric grids, and data-testid on all interactive elements."
+  ],
+  "universal_guidelines": [
+    "Always use data-testid on all interactive elements, buttons, inputs, and links.",
+    "Never use fully transparent backgrounds for headers or dropdowns without backdrop blur.",
+    "Use generous padding p-6 or p-8 on card containers.",
+    "Ensure high contrast and responsive layouts."
+  ]
+}

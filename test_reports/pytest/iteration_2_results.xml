@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="1.888" timestamp="2026-08-30T16:05:14.658432+00:00" hostname="agent-env-2970494a-ca81-4f7b-a3b3-8906d4c28dcf"><testcase classname="tests.backend_test" name="test_catalog_and_filters" time="0.476" /><testcase classname="tests.backend_test" name="test_buyer_auth_saved_and_ai" time="0.795" /><testcase classname="tests.backend_test" name="test_registration_and_seller_entry" time="0.094"><failure message="assert (409 == 200)&#10; +  where 409 = &lt;Response [409]&gt;.status_code">backend/tests/backend_test.py:36: in test_registration_and_seller_entry
+    assert r.status_code == 200 and r.json()["user"]["role"] == "seller"
+E   assert (409 == 200)
+E    +  where 409 = &lt;Response [409]&gt;.status_code</failure></testcase></testsuite></testsuites>
