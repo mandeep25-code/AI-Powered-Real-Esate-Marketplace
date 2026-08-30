@@ -26,6 +26,12 @@ Build a premium AI-Powered Real Estate Marketplace using strictly MERN Stack (Re
 
 ## What's been implemented
 
+### 2026-08-30 (Session 3)
+- Live Gemini: `gemini-2.5-flash` with `thinkingBudget=0` and JSON-mode analysis; `/api/ai/assistant` and `/api/ai/analyze/:id` now return `source='gemini'` with real insight, risks, and (when returned) 12-24 month outlook. Fallback path preserved if the key is missing.
+- Saved Searches: buyers save a brief + filters (type / max price) via an inline "Save this search" button in the filter row; live matches previewed on save and browsable from a new Saved Searches modal (also linked from the user menu). Endpoints: `GET/POST/DELETE /api/me/searches`, `GET /api/me/searches/:id/matches`.
+- Match alerts (in-app): when a seller publishes a new property, `fanoutSavedSearches()` seeds a `notifications` row for every matching buyer (self-excluded). Header bell shows unread badge; opening the panel auto-marks read. Endpoints: `GET /api/me/notifications`, `POST /api/me/notifications/read`. Email deferred by user choice.
+- Market report modal now surfaces Gemini outlook + a small "Powered by Gemini" pill when the AI source is live.
+
 ### 2026-08-30 (Session 2)
 - Buyer↔Seller Messaging Inbox with threaded conversations (threadId keyed on sorted participants + propertyId), unread badges in header, and property context inside every thread.
 - Agent Profiles: 3 seeded advisors (Julian, Selene, Ronan) with headline, bio, phone, city, years experience, specialties, portrait, and license #. Public `/api/agents` list + detail. Sellers can edit their profile from the user menu (role-guarded `PUT /api/me/profile`).

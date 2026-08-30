@@ -19,6 +19,8 @@ const properties = db.collection('properties');
 const messages = db.collection('messages');
 const files = db.collection('files');
 const reports = db.collection('market_reports');
+const searches = db.collection('saved_searches');
+const notifications = db.collection('notifications');
 const JWT_SECRET = process.env.JWT_SECRET || 'lumina-local-secret';
 const uid = () => crypto.randomUUID();
 const threadIdFor = (a, b, p) => [a, b].sort().join('|') + '|' + (p || 'general');
@@ -79,14 +81,37 @@ async function askGemini(prompt, catalog) {
   const key = process.env.GEMINI_API_KEY || process.env.EMERGENT_LLM_KEY;
   if (!key) return null;
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${encodeURIComponent(key)}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: `You are Lumina, a precise luxury real estate advisor. Use only the catalog below. Answer in two warm, concise sentences and name the best matching property. User brief: ${prompt}\nCatalog: ${JSON.stringify(catalog)}` }] }] })
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: 'You are Lumina, a warm, precise luxury real-estate advisor. Recommend only from the catalog. Answer in 2–3 concise sentences, name the best-fit property and 1 reason. Do not use markdown or bullet lists.' }] },
+        contents: [{ role: 'user', parts: [{ text: `User brief: ${prompt}\nCatalog: ${JSON.stringify(catalog)}` }] }],
+        generationConfig: { temperature: 0.7, maxOutputTokens: 400, thinkingConfig: { thinkingBudget: 0 } }
+      })
+    });
+    if (!response.ok) { console.warn('Gemini non-OK:', response.status, await response.text().catch(() => '')); return null; }
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.map(part => part.text).join('').trim() || null;
+  } catch (error) { console.warn('Gemini request unavailable:', error.message); return null; }
+}
+
+async function askGeminiAnalysis(property) {
+  const key = process.env.GEMINI_API_KEY || process.env.EMERGENT_LLM_KEY;
+  if (!key) return null;
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: 'You are Lumina, a market-savvy real-estate analyst. Return ONLY valid minified JSON with keys: insight (2 sentence prose about the value story), risks (array of 3 short check-this items — HOA, insurance, comps, neighborhood plans etc), and outlook (one-sentence 12-24 month view). No markdown, no code fences.' }] },
+        contents: [{ role: 'user', parts: [{ text: `Property: ${JSON.stringify({ title: property.title, type: property.type, city: property.city, neighborhood: property.neighborhood, price: property.price, sqft: property.sqft, beds: property.beds, baths: property.baths, tags: property.tags, aiScore: property.aiScore })}` }] }],
+        generationConfig: { temperature: 0.4, maxOutputTokens: 700, responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } }
+      })
     });
     if (!response.ok) return null;
     const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.map(part => part.text).join('') || null;
-  } catch (error) { console.warn('Gemini request unavailable:', error.message); return null; }
+    const raw = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
+    try { return JSON.parse(raw); } catch { return null; }
+  } catch (error) { console.warn('Gemini analysis unavailable:', error.message); return null; }
 }
 
 async function getStorageKey() {
@@ -110,7 +135,15 @@ async function putImage(file, userId) {
 async function reportFor(property) {
   const estimatedLow = Math.round(property.price * .96 / 1000) * 1000;
   const estimatedHigh = Math.round(property.price * 1.05 / 1000) * 1000;
-  return { valueSignal: property.aiScore > 90 ? 'Exceptional' : 'Strong', estimatedRange: `$${estimatedLow.toLocaleString()} – $${estimatedHigh.toLocaleString()}`, investmentScore: Math.max(70, property.aiScore - 3), confidence: property.aiScore > 90 ? 'High' : 'Good', risks: ['Review HOA and insurance documents', 'Validate recent comparable sales'], comparables: [{ label: 'Neighborhood median', value: `$${Math.round(property.price * .91 / 1000).toLocaleString()}` }, { label: 'Price / sqft', value: `$${Math.round(property.price / property.sqft).toLocaleString()}` }, { label: '12-month demand', value: property.aiScore > 90 ? 'Strong' : 'Steady' }], insight: 'The location and amenity mix support resilient demand. The strongest upside is long-term rental flexibility.' };
+  const base = { valueSignal: property.aiScore > 90 ? 'Exceptional' : 'Strong', estimatedRange: `$${estimatedLow.toLocaleString()} – $${estimatedHigh.toLocaleString()}`, investmentScore: Math.max(70, property.aiScore - 3), confidence: property.aiScore > 90 ? 'High' : 'Good', risks: ['Review HOA and insurance documents', 'Validate recent comparable sales', 'Check flood and fire risk maps'], comparables: [{ label: 'Neighborhood median', value: `$${Math.round(property.price * .91 / 1000).toLocaleString()}` }, { label: 'Price / sqft', value: `$${Math.round(property.price / property.sqft).toLocaleString()}` }, { label: '12-month demand', value: property.aiScore > 90 ? 'Strong' : 'Steady' }], insight: 'The location and amenity mix support resilient demand. The strongest upside is long-term rental flexibility.', outlook: '', source: 'lumina-insights-fallback' };
+  const ai = await askGeminiAnalysis(property);
+  if (ai) {
+    if (ai.insight) base.insight = String(ai.insight).trim();
+    if (Array.isArray(ai.risks) && ai.risks.length) base.risks = ai.risks.slice(0, 4).map(x => String(x).trim());
+    if (ai.outlook) base.outlook = String(ai.outlook).trim();
+    base.source = 'gemini';
+  }
+  return base;
 }
 
 app.get('/api', (_req, res) => res.json({ message: 'Lumina Estates API', status: 'ready' }));
@@ -122,7 +155,32 @@ app.get('/api/properties', async (req, res) => { const q = (req.query.q || '').t
 app.get('/api/properties/:id', async (req, res) => { const p = await properties.findOne({ id: req.params.id }, { projection: { _id: 0 } }); if (!p) return res.status(404).json({ message: 'Property not found.' }); const seller = p.sellerId ? await users.findOne({ id: p.sellerId }) : null; res.json({ property: { ...p, seller: seller ? publicAgent(seller) : null } }); });
 app.post('/api/storage/upload', auth, upload.array('images', 8), async (req, res) => { if (req.user.role !== 'seller') return res.status(403).json({ message: 'Only sellers can upload listing images.' }); if (!req.files?.length) return res.status(400).json({ message: 'Choose at least one JPG, PNG, WEBP, or GIF image.' }); try { const uploaded = []; for (const file of req.files) uploaded.push(await putImage(file, req.user.id)); res.json({ files: uploaded }); } catch (error) { if (/403|401/.test(error.message)) storageKey = null; res.status(502).json({ message: 'Image storage is temporarily unavailable. Please try again.' }); } });
 app.get('/api/files/:id', async (req, res) => { const record = await files.findOne({ id: req.params.id, isDeleted: false }); if (!record) return res.status(404).end(); try { const key = await getStorageKey(); const response = await fetch(`${storageBase}/objects/${record.storagePath}`, { headers: { 'X-Storage-Key': key } }); if (!response.ok) return res.status(response.status).end(); res.set('Content-Type', record.contentType); res.send(Buffer.from(await response.arrayBuffer())); } catch { res.status(502).end(); } });
-app.post('/api/properties', auth, async (req, res) => { if (req.user.role !== 'seller') return res.status(403).json({ message: 'Only sellers can publish listings.' }); const numeric = ['price', 'beds', 'baths', 'sqft']; const property = { ...req.body, ...Object.fromEntries(numeric.map(key => [key, Number(req.body[key])])), id: uid(), sellerId: req.user.id, status: 'For sale', createdAt: new Date().toISOString(), aiScore: 82, tags: Array.isArray(req.body.tags) ? req.body.tags : String(req.body.tags || '').split(',').map(x => x.trim()).filter(Boolean), views: 0, saves: 0, inquiries: 0 }; await properties.insertOne(property); res.json({ property: clean(property) }); });
+function propertyMatchesSearch(property, search) {
+  const f = search.filters || {};
+  if (f.type && f.type !== 'All' && property.type !== f.type) return false;
+  if (f.max && Number(property.price) > Number(f.max)) return false;
+  if (f.min && Number(property.price) < Number(f.min)) return false;
+  const q = (f.q || search.brief || '').trim().toLowerCase();
+  if (q) {
+    const hay = `${property.title} ${property.city} ${property.neighborhood} ${(property.tags || []).join(' ')} ${property.type} ${property.description || ''}`.toLowerCase();
+    const terms = q.split(/[\s,._\-\/]+/).filter(t => t.length > 2);
+    if (terms.length && !terms.some(t => hay.includes(t))) return false;
+  }
+  return true;
+}
+
+async function fanoutSavedSearches(property) {
+  try {
+    const list = await searches.find({}).toArray();
+    const now = new Date().toISOString();
+    const docs = list.filter(s => s.userId !== property.sellerId && propertyMatchesSearch(property, s)).map(s => ({
+      id: uid(), userId: s.userId, savedSearchId: s.id, propertyId: property.id, propertyTitle: property.title, propertyImage: property.image, propertyCity: property.city, propertyPrice: property.price, searchName: s.name, read: false, createdAt: now
+    }));
+    if (docs.length) await notifications.insertMany(docs);
+  } catch (e) { console.warn('fanoutSavedSearches failed:', e.message); }
+}
+
+app.post('/api/properties', auth, async (req, res) => { if (req.user.role !== 'seller') return res.status(403).json({ message: 'Only sellers can publish listings.' }); const numeric = ['price', 'beds', 'baths', 'sqft']; const property = { ...req.body, ...Object.fromEntries(numeric.map(key => [key, Number(req.body[key])])), id: uid(), sellerId: req.user.id, status: 'For sale', createdAt: new Date().toISOString(), aiScore: 82, tags: Array.isArray(req.body.tags) ? req.body.tags : String(req.body.tags || '').split(',').map(x => x.trim()).filter(Boolean), views: 0, saves: 0, inquiries: 0 }; await properties.insertOne(property); fanoutSavedSearches(property); res.json({ property: clean(property) }); });
 
 app.get('/api/me/saved', auth, async (req, res) => { const user = await users.findOne({ id: req.user.id }); const saved = await properties.find({ id: { $in: user.wishlist || [] } }, { projection: { _id: 0 } }).toArray(); res.json({ wishlist: saved, compare: user.compare || [] }); });
 app.post('/api/me/wishlist/:id', auth, async (req, res) => { const user = await users.findOne({ id: req.user.id }); const list = user.wishlist || []; const wishlist = list.includes(req.params.id) ? list.filter(id => id !== req.params.id) : [...list, req.params.id]; await users.updateOne({ id: req.user.id }, { $set: { wishlist } }); res.json({ wishlist }); });
@@ -212,6 +270,47 @@ app.post('/api/ai/assistant', async (req, res) => { const prompt = (req.body.pro
 app.post('/api/ai/analyze/:id', async (req, res) => { const p = await properties.findOne({ id: req.params.id }, { projection: { _id: 0 } }); if (!p) return res.status(404).json({ message: 'Property not found.' }); res.json({ analysis: await reportFor(p) }); });
 app.get('/api/reports', auth, async (req, res) => res.json({ reports: await reports.find({ userId: req.user.id }, { projection: { _id: 0 } }).sort({ createdAt: -1 }).toArray() }));
 app.post('/api/reports', auth, async (req, res) => { const property = await properties.findOne({ id: req.body.propertyId }, { projection: { _id: 0 } }); if (!property) return res.status(404).json({ message: 'Property not found.' }); const report = { id: uid(), userId: req.user.id, propertyId: property.id, propertyTitle: property.title, city: property.city, price: property.price, analysis: await reportFor(property), createdAt: new Date().toISOString() }; await reports.insertOne(report); res.json({ report: clean(report) }); });
+
+app.get('/api/me/searches', auth, async (req, res) => {
+  const list = await searches.find({ userId: req.user.id }, { projection: { _id: 0 } }).sort({ createdAt: -1 }).toArray();
+  res.json({ searches: list });
+});
+
+app.post('/api/me/searches', auth, async (req, res) => {
+  const brief = (req.body.brief || '').trim();
+  const filters = req.body.filters || {};
+  if (!brief && !filters.q && !filters.type && !filters.max) return res.status(400).json({ message: 'Add a brief or at least one filter to save.' });
+  const name = (req.body.name || brief || `${filters.type || 'All'} · under $${(Number(filters.max) / 1000000).toFixed(1)}M`).slice(0, 80);
+  const search = { id: uid(), userId: req.user.id, name, brief, filters: { q: filters.q || '', type: filters.type || 'All', max: filters.max ? Number(filters.max) : null, min: filters.min ? Number(filters.min) : null }, createdAt: new Date().toISOString() };
+  await searches.insertOne(search);
+  const list = await properties.find({}, { projection: { _id: 0 } }).toArray();
+  const previewMatches = list.filter(p => propertyMatchesSearch(p, search)).slice(0, 6);
+  res.json({ search: clean(search), matches: previewMatches });
+});
+
+app.delete('/api/me/searches/:id', auth, async (req, res) => {
+  const r = await searches.deleteOne({ id: req.params.id, userId: req.user.id });
+  if (!r.deletedCount) return res.status(404).json({ message: 'Saved search not found.' });
+  res.json({ ok: true });
+});
+
+app.get('/api/me/searches/:id/matches', auth, async (req, res) => {
+  const s = await searches.findOne({ id: req.params.id, userId: req.user.id });
+  if (!s) return res.status(404).json({ message: 'Saved search not found.' });
+  const list = await properties.find({}, { projection: { _id: 0 } }).toArray();
+  res.json({ matches: list.filter(p => propertyMatchesSearch(p, s)) });
+});
+
+app.get('/api/me/notifications', auth, async (req, res) => {
+  const list = await notifications.find({ userId: req.user.id }, { projection: { _id: 0 } }).sort({ createdAt: -1 }).limit(50).toArray();
+  const unread = list.filter(n => !n.read).length;
+  res.json({ notifications: list, unread });
+});
+
+app.post('/api/me/notifications/read', auth, async (req, res) => {
+  await notifications.updateMany({ userId: req.user.id, read: { $ne: true } }, { $set: { read: true } });
+  res.json({ ok: true });
+});
 
 async function start() { await mongo.connect(); await seed(); app.listen(8002, '127.0.0.1', () => console.log('Lumina Express API listening on 8002')); }
 start().catch(err => { console.error(err); process.exit(1); });

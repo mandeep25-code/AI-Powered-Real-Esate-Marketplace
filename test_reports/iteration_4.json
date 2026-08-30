@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 4 verified end-to-end: Live Gemini (assistant+analyze return source='gemini' with non-fallback insight/outlook), Saved Searches CRUD + auth isolation, Notifications fanout on new property (including self-exclusion for the seller), and full frontend flows (bell + notifications panel, max-price filter, save-search inline with unauth bounce, Saved Searches modal via filter-row and user menu, MarketReportModal outlook + Gemini pill). Regression covered messaging inbox + agent enrichment. 15/15 pytest cases passed; all critical UI flows exercised through Playwright.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/me/searches (fanout matching)", "issue": "propertyMatchesSearch tokenizes brief on whitespace/commas only (not underscores/punctuation), so a brief like 'TEST_fanout_villa' fails to match property title 'TEST_Fanout Villa' due to space vs underscore. Not user-facing (real briefs use words), but worth loosening the split regex to include underscores."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Save-search inline status", "issues": ["Status pill shows transient 'Saving your search…' but the success message clears after a couple seconds — no persistent success indicator; the visual delta is subtle."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/test_reports/pytest/iteration_4_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Loosen brief tokenization in propertyMatchesSearch to split on underscores/punctuation as well as whitespace, otherwise brief-only matching is quirky.",
+    "(Optional) After a successful save, keep the SaveSearchInline success pill visible slightly longer (~2s) so users notice it."
+  ],
+  "critical_code_review_comments": [
+    "server.js is now ~316 lines and includes auth, listings, storage, messages, agents, AI, reports, saved searches, and notifications. This should be split into routers/services before it grows further.",
+    "fanoutSavedSearches loads ALL saved_searches into memory on every property publish. Fine for demo scale but will not scale — index on user + filters or query with an aggregation once volume grows.",
+    "askGeminiAnalysis returns null on invalid JSON but the outer reportFor still returns fallback source; note that responseMimeType:'application/json' is set but Gemini occasionally omits 'outlook' — handled gracefully.",
+    "notifications collection has no TTL/index — buyer notifications will accumulate indefinitely; consider a cap or read-cleanup strategy.",
+    "propertyMatchesSearch brief tokenization drops tokens ≤ 2 chars but doesn't split on underscores/other punctuation, causing false negatives on compound briefs."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4.py"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100% (all critical flows)"},
+  "test_credentials": "Buyer: buyer@lumina.demo / Lumina2026!  |  Sellers: seller@lumina.demo, selene@lumina.demo, ronan@lumina.demo / Lumina2026!",
+  "seed_data_creation": "Buyer saved 1 search via UI (max=1.5M). Fanout test created a TEST_ 'TEST_Fanout Villa' property in Austin ($1.2M) and a matching saved search that was later deleted. The seller-owned test property remains in the DB.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend regression: /app/backend/tests/test_iteration4.py (15 tests). Requires REACT_APP_BACKEND_URL. TestGemini expects LIVE Gemini responses — if GEMINI_API_KEY is removed, these two tests will fail with source='lumina-insights-fallback'. TestFanout uses a brief with spaces (matters — see minor issue above). Frontend testids to reuse: header-notifications-button, notifications-panel, filter-max-input, save-search-button, save-search-status, advanced-filters-button (opens SavedSearchesModal from filter row), saved-searches-link (user menu), saved-searches-modal, report-outlook-text, report-source. UI submit for auth modal is button labeled 'Enter Lumina'. Iteration-3 messaging/agents flows still intact.",
+  "rca of the issue": "N/A — no user-visible failures. The one test assertion that initially failed was purely due to my test brief 'TEST_fanout_villa' colliding with the tokenizer's whitespace-only split — the property title has a space between 'Fanout' and 'Villa' so the underscored brief could not match. Fixed by using a spaced brief, which is representative of real user input."
+}

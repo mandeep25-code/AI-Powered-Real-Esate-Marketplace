@@ -268,3 +268,122 @@ export function useUnreadCount(api, token) {
   useEffect(() => { refresh(); }, [refresh]);
   return [unread, refresh];
 }
+
+export function useNotifications(api, token) {
+  const [data, setData] = useState({ notifications: [], unread: 0 });
+  const refresh = useMemo(() => async () => {
+    if (!token) return setData({ notifications: [], unread: 0 });
+    try {
+      const r = await axios.get(`${api}/me/notifications`, { headers: { Authorization: `Bearer ${token}` } });
+      setData({ notifications: r.data.notifications || [], unread: r.data.unread || 0 });
+    } catch {}
+  }, [api, token]);
+  useEffect(() => { refresh(); const t = setInterval(refresh, 20000); return () => clearInterval(t); }, [refresh]);
+  return [data, refresh];
+}
+
+export function NotificationsPanel({ api, token, data, refresh, onClose, onOpenProperty }) {
+  const markAllRead = async () => {
+    try { await axios.post(`${api}/me/notifications/read`, {}, { headers: { Authorization: `Bearer ${token}` } }); refresh(); } catch {}
+  };
+  useEffect(() => { if (data.unread > 0) markAllRead(); /* eslint-disable-next-line */ }, []);
+  return (
+    <div className="notifications-dropdown" data-testid="notifications-panel">
+      <header className="notifications-head"><p className="kicker">MATCH ALERTS</p><button className="close-button" data-testid="close-notifications" onClick={onClose}><X size={16} /></button></header>
+      {data.notifications.length === 0 ? (
+        <p className="muted notifications-empty" data-testid="notifications-empty">No alerts yet. Save a search from the collection and Lumina will notify you when a home matches.</p>
+      ) : (
+        <ul className="notifications-list">
+          {data.notifications.map((n) => (
+            <li key={n.id}>
+              <button className="notification-row" data-testid={`notification-${n.id}`} onClick={() => onOpenProperty(n.propertyId)}>
+                <img src={n.propertyImage} alt={n.propertyTitle} />
+                <div>
+                  <small>NEW MATCH · {n.searchName}</small>
+                  <strong>{n.propertyTitle}</strong>
+                  <span>{n.propertyCity} · ${(n.propertyPrice / 1000000).toFixed(2)}M</span>
+                </div>
+                {!n.read && <span className="dot" />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+export function SaveSearchInline({ api, token, current, onSaved }) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("");
+  const save = async () => {
+    if (!token) return onSaved(null, "auth");
+    setBusy(true); setStatus("Saving your search…");
+    try {
+      const r = await axios.post(`${api}/me/searches`, { brief: current.q || "", filters: { q: current.q || "", type: current.type || "All", max: current.max || null } }, { headers: { Authorization: `Bearer ${token}` } });
+      setStatus(`Saved — ${r.data.matches.length} match${r.data.matches.length === 1 ? "" : "es"} today.`);
+      onSaved(r.data);
+      setTimeout(() => setStatus(""), 5000);
+    } catch (err) {
+      setStatus(err.response?.data?.message || "Could not save.");
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="save-search-inline">
+      <button className="outline-button" data-testid="save-search-button" onClick={save} disabled={busy}><Sparkles size={14} /> Save this search</button>
+      {status && <span className="save-search-status" data-testid="save-search-status">{status}</span>}
+    </div>
+  );
+}
+
+export function SavedSearchesModal({ api, token, onClose, onOpenProperty }) {
+  const [items, setItems] = useState([]);
+  const [expanded, setExpanded] = useState(null);
+  const [matches, setMatches] = useState({});
+  const [loading, setLoading] = useState(true);
+  const load = async () => {
+    try { const r = await axios.get(`${api}/me/searches`, { headers: { Authorization: `Bearer ${token}` } }); setItems(r.data.searches || []); } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  const openMatches = async (search) => {
+    setExpanded(search.id);
+    if (!matches[search.id]) {
+      try { const r = await axios.get(`${api}/me/searches/${search.id}/matches`, { headers: { Authorization: `Bearer ${token}` } }); setMatches((m) => ({ ...m, [search.id]: r.data.matches })); } catch {}
+    }
+  };
+  const remove = async (id) => {
+    try { await axios.delete(`${api}/me/searches/${id}`, { headers: { Authorization: `Bearer ${token}` } }); setItems((l) => l.filter((x) => x.id !== id)); } catch {}
+  };
+  return (
+    <div className="modal-backdrop" data-testid="saved-searches-modal">
+      <div className="saved-modal">
+        <div className="modal-head"><div><p className="kicker">SAVED SEARCHES</p><h2>Homes you’ll be<br /><em>the first to know about.</em></h2></div><button className="close-button" data-testid="close-saved-modal" onClick={onClose}><X /></button></div>
+        <p className="muted">We’ll notify you as soon as a new listing matches. You can open the current matches any time.</p>
+        {loading ? <div className="loading-state" data-testid="saved-loading">Reading your briefs…</div> :
+          items.length === 0 ? <p className="muted" data-testid="saved-empty">You haven’t saved a search yet. Try setting a filter and choosing <em>Save this search</em>.</p> :
+          <ul className="saved-list">
+            {items.map((s) => (
+              <li key={s.id} className={`saved-row ${expanded === s.id ? "open" : ""}`} data-testid={`saved-${s.id}`}>
+                <button className="saved-head-btn" onClick={() => openMatches(s)}>
+                  <div><strong>{s.name}</strong><span>{s.filters.type !== "All" ? s.filters.type : "Any type"}{s.filters.max ? ` · under $${(s.filters.max / 1000000).toFixed(1)}M` : ""}</span></div>
+                  <ArrowUpRight size={16} />
+                </button>
+                <button className="saved-remove" data-testid={`delete-saved-${s.id}`} onClick={() => remove(s.id)}><X size={14} /></button>
+                {expanded === s.id && (
+                  <div className="saved-matches">
+                    {(matches[s.id] || []).length === 0 ? <p className="muted">No live matches right now — we’ll ping you as soon as one arrives.</p> :
+                      (matches[s.id] || []).map((p) => (
+                        <button key={p.id} className="saved-match" data-testid={`saved-match-${p.id}`} onClick={() => onOpenProperty(p)}>
+                          <img src={p.image} alt={p.title} />
+                          <div><strong>{p.title}</strong><span>{p.city} · {money(p.price)}</span></div>
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>}
+      </div>
+    </div>
+  );
+}
