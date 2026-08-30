@@ -26,7 +26,13 @@ Build a premium AI-Powered Real Estate Marketplace using strictly MERN Stack (Re
 
 ## What's been implemented
 
-### 2026-08-30
+### 2026-08-30 (Session 2)
+- Buyer↔Seller Messaging Inbox with threaded conversations (threadId keyed on sorted participants + propertyId), unread badges in header, and property context inside every thread.
+- Agent Profiles: 3 seeded advisors (Julian, Selene, Ronan) with headline, bio, phone, city, years experience, specialties, portrait, and license #. Public `/api/agents` list + detail. Sellers can edit their profile from the user menu (role-guarded `PUT /api/me/profile`).
+- Property detail now enriched with the representing advisor (agent strip inline); Enquire button posts a real message and opens the inbox thread automatically. Backfill added so seed properties get a sellerId.
+- 14/14 backend tests + full Playwright UI flow verified in iteration_3.
+
+### 2026-08-30 (Session 1)
 - Replaced the starter FastAPI API with a Node/Express marketplace service backed by MongoDB.
 - Added seeded properties and demo buyer/seller accounts: `buyer@lumina.demo` and `seller@lumina.demo`, password `Lumina2026!`.
 - Added JWT registration/login, role-aware property creation, saved properties, compare state, dashboards, messages, AI assistant, and analysis endpoints.
@@ -39,12 +45,13 @@ Build a premium AI-Powered Real Estate Marketplace using strictly MERN Stack (Re
 ### P0 — remaining for production completion
 - Configure a Google-accepted Gemini API credential so assistant, comparable analysis, risk, and investment responses are live rather than fallback.
 - Complete seller listing form with image upload, full property fields, edit/delete, and publish moderation.
-- Complete message inbox UI and threaded buyer-seller conversations.
 
 ### P1
+- Refactor `server.js` into per-domain routers (routes/messages.js, routes/agents.js, etc.).
 - Add persistent user preference profiles to improve recommendations over time.
 - Add saved searches, alerts, pagination, and map-based discovery.
 - Add server-side validation schemas, rate limits, audit events, and refresh-token rotation.
+- Real-time inbox updates (SSE or polling) so new messages surface without reopening the modal.
 
 ### P2
 - Add agent profiles and verified listing badges.
